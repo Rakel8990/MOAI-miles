@@ -40,20 +40,15 @@
 
   noscript { color: var(--text-dim); font-family: var(--font-mono); font-size: 13px; text-align: center; padding: 40px; display: block; }
 
-  #app { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; padding: 14px; }
+  #app { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; padding: 0; }
 
   #gameContainer {
     position: relative;
-    width: 100%;
-    max-width: 900px;
-    aspect-ratio: 2 / 1;
-    min-height: 260px;
-    max-height: 480px;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
     background: #05070a;
-    border: 1px solid var(--border);
-    border-radius: 18px;
     overflow: hidden;
-    box-shadow: 0 0 0 1px rgba(255,255,255,0.02), 0 30px 70px rgba(0,0,0,0.55);
   }
 
   canvas#gameCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; z-index: 1; cursor: pointer; }
@@ -242,7 +237,7 @@
     <div id="leaderboardScreen" class="screen hidden">
       <div class="logo-glow small">LEADERBOARD</div>
       <div class="leaderboard-list" id="leaderboardList"></div>
-      <div class="controls-hint">Stored on this device — structured so a live API can slot in later</div>
+      <div class="controls-hint" id="leaderboardStatus">Loading...</div>
       <button id="closeLeaderboardBtn" class="btn">CLOSE</button>
     </div>
 
@@ -261,7 +256,7 @@
         <button id="restartBtn" class="btn">PLAY AGAIN</button>
         <button id="menuBtn" class="btn secondary small">MAIN MENU</button>
       </div>
-      <button id="shareBtn" class="btn secondary small">SHARE SCORE</button>
+      <button id="shareBtn" class="btn secondary small">SHARE ON X</button>
     </div>
   </div>
 </div>
@@ -393,6 +388,7 @@ const skinToggleRow = document.getElementById('skinToggleRow');
 const skinToggle = document.getElementById('skinToggle');
 const statsGridEl = document.getElementById('statsGrid');
 const leaderboardListEl = document.getElementById('leaderboardList');
+const leaderboardStatusEl = document.getElementById('leaderboardStatus');
 const pauseBtn = document.getElementById('pauseBtn');
 const muteBtn = document.getElementById('muteBtn');
 const resumeBtn = document.getElementById('resumeBtn');
@@ -1337,25 +1333,60 @@ function refreshGameOverStats(distanceThisRun) {
   ]);
 }
 
-function refreshLeaderboard() {
-  const list = loadLeaderboard();
+const LEADERBOARD_API = '/api/leaderboard';
+
+// Tries the shared online leaderboard first; falls back to this device's local
+// copy if the API times out, errors, or hasn't been set up yet (see README).
+async function fetchOnlineLeaderboard() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4000);
+  try {
+    const res = await fetch(LEADERBOARD_API, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error('bad response');
+    const data = await res.json();
+    return { entries: data.entries || [], online: true };
+  } catch (e) {
+    clearTimeout(timer);
+    return { entries: loadLeaderboard(), online: false };
+  }
+}
+
+// Fire-and-forget: pushes this run to the shared leaderboard if the API is live.
+// The local copy is already saved regardless, so this never blocks or breaks a run.
+function submitOnlineScore(entry) {
+  fetch(LEADERBOARD_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(entry),
+  }).catch(() => { /* offline or not configured yet — local copy already has it */ });
+}
+
+async function refreshLeaderboard() {
   leaderboardListEl.innerHTML = '';
-  if (list.length === 0) {
+  leaderboardStatusEl.textContent = 'Loading...';
+
+  const { entries, online } = await fetchOnlineLeaderboard();
+  leaderboardListEl.innerHTML = '';
+
+  if (entries.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'lb-empty';
     empty.textContent = 'No runs yet. Be the first to bag some yield.';
     leaderboardListEl.appendChild(empty);
-    return;
+  } else {
+    entries.forEach((entry, i) => {
+      const row = document.createElement('div');
+      row.className = 'lb-row';
+      const rank = document.createElement('span'); rank.className = 'rank'; rank.textContent = '#' + (i + 1);
+      const name = document.createElement('span'); name.className = 'name'; name.textContent = entry.name;
+      const sc = document.createElement('span'); sc.className = 'sc'; sc.textContent = entry.score;
+      row.appendChild(rank); row.appendChild(name); row.appendChild(sc);
+      leaderboardListEl.appendChild(row);
+    });
   }
-  list.forEach((entry, i) => {
-    const row = document.createElement('div');
-    row.className = 'lb-row';
-    const rank = document.createElement('span'); rank.className = 'rank'; rank.textContent = '#' + (i + 1);
-    const name = document.createElement('span'); name.className = 'name'; name.textContent = entry.name;
-    const sc = document.createElement('span'); sc.className = 'sc'; sc.textContent = entry.score;
-    row.appendChild(rank); row.appendChild(name); row.appendChild(sc);
-    leaderboardListEl.appendChild(row);
-  });
+
+  leaderboardStatusEl.textContent = online ? 'Live global leaderboard' : 'Offline — showing local scores only';
 }
 
 function applySettingsToUI() {
@@ -1433,7 +1464,9 @@ function endGame(collisionX) {
   if (game.score > stats.bestScore) { stats.bestScore = game.score; isNewBest = true; }
   saveStats(stats);
 
-  addLeaderboardEntry({ name: username || 'Runner', score: game.score, distance: Math.floor(game.distance / DISTANCE_UNIT), bags: game.bags, date: new Date().toISOString().slice(0, 10) });
+  const leaderboardEntry = { name: username || 'Runner', score: game.score, distance: Math.floor(game.distance / DISTANCE_UNIT), bags: game.bags, date: new Date().toISOString().slice(0, 10) };
+  addLeaderboardEntry(leaderboardEntry);
+  submitOnlineScore(leaderboardEntry);
 
   checkAchievements();
   checkSkinUnlock();
@@ -1561,48 +1594,32 @@ function generateShareCardCanvas() {
   return card;
 }
 
-async function fallbackCopy(caption) {
-  if (navigator.clipboard) {
-    try {
-      await navigator.clipboard.writeText(caption);
-      shareBtn.textContent = 'IMAGE SAVED + CAPTION COPIED';
-      setTimeout(() => { shareBtn.textContent = 'SHARE SCORE'; }, 2600);
-      return;
-    } catch (e) { /* clipboard unavailable, fall through */ }
-  }
-  shareBtn.textContent = 'IMAGE SAVED';
-  setTimeout(() => { shareBtn.textContent = 'SHARE SCORE'; }, 2000);
-}
+function shareScore() {
+  playClickSound();
+  const card = generateShareCardCanvas();
+  const distanceM = Math.floor(game.distance / DISTANCE_UNIT);
+  const caption = 'Scored ' + Math.floor(game.score) + ' on Moai Miles \uD83D\uDDFF ' + game.bags +
+    ' bags, ' + distanceM + 'm run. Can you beat it? Built by @22kian_';
+  const gameUrl = window.location.origin + window.location.pathname;
 
-function downloadCard(card, caption) {
-  const url = card.toDataURL('image/png');
+  // Save the branded card first so it's sitting in Downloads, ready to drag into
+  // the X compose window that's about to open (intent links can't attach media directly).
+  const dataUrl = card.toDataURL('image/png');
   const a = document.createElement('a');
-  a.href = url;
-  a.download = 'concrete-runner-score.png';
+  a.href = dataUrl;
+  a.download = 'moai-miles-score.png';
   document.body.appendChild(a);
   a.click();
   a.remove();
-  fallbackCopy(caption);
-}
 
-async function shareScore() {
-  playClickSound();
-  const card = generateShareCardCanvas();
-  const caption = 'Scored ' + Math.floor(game.score) + ' on Moai Miles \uD83D\uDDFF ' + game.bags +
-    ' bags, ' + Math.floor(game.distance / DISTANCE_UNIT) + 'm run. Built by @22kian_';
+  const intentUrl = 'https://twitter.com/intent/tweet'
+    + '?text=' + encodeURIComponent(caption)
+    + '&url=' + encodeURIComponent(gameUrl)
+    + '&hashtags=' + encodeURIComponent('Concrete,DeFi');
+  window.open(intentUrl, '_blank', 'noopener,noreferrer');
 
-  card.toBlob(async (blob) => {
-    if (!blob) { fallbackCopy(caption); return; }
-    const file = new File([blob], 'concrete-runner-score.png', { type: 'image/png' });
-
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], text: caption, title: 'Moai Miles' });
-        return;
-      } catch (e) { /* user cancelled the native sheet, fall back to download */ }
-    }
-    downloadCard(card, caption);
-  }, 'image/png');
+  shareBtn.textContent = 'CARD SAVED — OPENING X...';
+  setTimeout(() => { shareBtn.textContent = 'SHARE ON X'; }, 2400);
 }
 
 function resetProgress() {
@@ -1666,7 +1683,7 @@ function init() {
   document.addEventListener('keydown', initAudioOnce);
 
   playBtn.addEventListener('click', startGame);
-  leaderboardBtn.addEventListener('click', () => { playClickSound(); refreshLeaderboard(); showScreen(leaderboardScreenEl); });
+  leaderboardBtn.addEventListener('click', async () => { playClickSound(); showScreen(leaderboardScreenEl); await refreshLeaderboard(); });
   settingsBtn.addEventListener('click', () => { playClickSound(); refreshSettingsStats(); showScreen(settingsScreenEl); });
   closeSettingsBtn.addEventListener('click', () => { playClickSound(); showScreen(startScreenEl); });
   closeLeaderboardBtn.addEventListener('click', () => { playClickSound(); showScreen(startScreenEl); });
