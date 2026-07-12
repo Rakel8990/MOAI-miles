@@ -324,11 +324,11 @@ const OBSTACLE_SIZES = [
 ];
 
 const BIOMES = [
-  { name: 'grassland', skyTop: '#8fd3f4', skyBot: '#e7f7fb', ground: '#4c9a4c', groundEdge: '#2f6b2f', accent: '#7ed957', mountains: '#5f8f6f', clouds: '#ffffff', deco: 'grass' },
-  { name: 'rocky',     skyTop: '#c9c2b4', skyBot: '#efe9dc', ground: '#7d746a', groundEdge: '#544c44', accent: '#a89f92', mountains: '#847a6e', clouds: '#f7f3ea', deco: 'rock' },
-  { name: 'desert',    skyTop: '#f6c667', skyBot: '#ffe9b3', ground: '#dbb26b', groundEdge: '#a97f45', accent: '#e8c07d', mountains: '#c99a5c', clouds: '#fff3d6', deco: 'dune' },
-  { name: 'night',     skyTop: '#0b1330', skyBot: '#1c2b52', ground: '#232a3d', groundEdge: '#131826', accent: '#4da3ff', mountains: '#1a2440', clouds: '#2a3658', deco: 'star' },
-  { name: 'snow',      skyTop: '#cfe8f5', skyBot: '#f2fbff', ground: '#e7f1f5', groundEdge: '#b9d3dd', accent: '#ffffff', mountains: '#c3dbe5', clouds: '#ffffff', deco: 'pine' },
+  { name: 'grassland', skyTop: '#8fd3f4', skyBot: '#e7f7fb', ground: '#4c9a4c', groundEdge: '#2f6b2f', soil: '#3d6b3a', accent: '#7ed957', mountains: '#5f8f6f', midground: '#7bab7f', clouds: '#ffffff', atmosphere: 'rgba(255,246,220,0.04)', decoTypes: ['grass', 'flower', 'bush'] },
+  { name: 'rocky',     skyTop: '#c9c2b4', skyBot: '#efe9dc', ground: '#7d746a', groundEdge: '#544c44', soil: '#5c5248', accent: '#a89f92', mountains: '#847a6e', midground: '#9a8f80', clouds: '#f7f3ea', atmosphere: 'rgba(210,198,180,0.07)', decoTypes: ['rock', 'boulder', 'crack'] },
+  { name: 'desert',    skyTop: '#f6c667', skyBot: '#ffe9b3', ground: '#dbb26b', groundEdge: '#a97f45', soil: '#8a6136', accent: '#e8c07d', mountains: '#c99a5c', midground: '#d9a866', clouds: '#fff3d6', atmosphere: 'rgba(255,196,110,0.09)', decoTypes: ['dune', 'cactus', 'plant', 'rock'] },
+  { name: 'night',     skyTop: '#0b1330', skyBot: '#1c2b52', ground: '#232a3d', groundEdge: '#131826', soil: '#161c2c', accent: '#4da3ff', mountains: '#1a2440', midground: '#222c48', clouds: '#2a3658', atmosphere: 'rgba(80,110,210,0.08)', decoTypes: ['crystal', 'rock'] },
+  { name: 'snow',      skyTop: '#cfe8f5', skyBot: '#f2fbff', ground: '#e7f1f5', groundEdge: '#b9d3dd', soil: '#a9c6d1', accent: '#ffffff', mountains: '#c3dbe5', midground: '#d3e6ee', clouds: '#ffffff', atmosphere: 'rgba(255,255,255,0.12)', decoTypes: ['pine', 'snowdrift'] },
 ];
 
 const GAME_OVER_MESSAGES = [
@@ -570,6 +570,30 @@ function roundRectPath(c, x, y, w, h, r) {
   c.closePath();
 }
 
+// Lightens (positive amount) or darkens (negative) a hex color by a 0-1 fraction.
+function shadeColor(hex, amount) {
+  const { r, g, b } = hexToRgb(hex);
+  const adj = (c) => clamp(Math.round(c + amount * 255), 0, 255);
+  return `rgb(${adj(r)},${adj(g)},${adj(b)})`;
+}
+
+// Fills a rect with a grid of solid, hard-edged squares picked from `shades` —
+// the core "Minecraft" technique: no gradients or curves, just deliberately
+// chunky pixels. `seed` should be stable per-object (its slot index, not its
+// live screen position) so the texture doesn't flicker as it scrolls.
+function drawPixelBlock(x, y, w, h, seed, shades, pixelSize) {
+  const cols = Math.max(1, Math.round(w / pixelSize));
+  const rows = Math.max(1, Math.round(h / pixelSize));
+  const pw = w / cols, ph = h / rows;
+  for (let cy = 0; cy < rows; cy++) {
+    for (let cx = 0; cx < cols; cx++) {
+      const cellSeed = seededRandom(seed * 97.7 + cx * 13.1 + cy * 29.3 + 1);
+      ctx.fillStyle = shades[Math.floor(cellSeed * shades.length)];
+      ctx.fillRect(x + cx * pw, y + cy * ph, pw + 0.6, ph + 0.6);
+    }
+  }
+}
+
 function weightedPick(list) {
   const total = list.reduce((s, t) => s + t.weight, 0);
   let r = Math.random() * total;
@@ -663,42 +687,116 @@ function updateWeather(dt) {
   }
 }
 
+/* ------------------------- camera ---------------------------------------
+   Pure visual layer. Nothing here touches game.mascot.x, worldToScreenX(), or
+   any collision math — those stay exactly as they were. The camera is only
+   ever applied as an extra ctx transform inside render(), after gameplay has
+   already been resolved for the frame.
+--------------------------------------------------------------------------- */
+const camera = { offsetY: 0, zoom: 1, bounceTime: 0, bounceDuration: 0.22, bounceMag: 9 };
+
+function triggerCameraBounce() { camera.bounceTime = camera.bounceDuration; }
+
+function updateCamera(dt) {
+  const airT = clamp((groundY - (game.mascot.y + game.mascot.h)) / 160, 0, 1);
+  const followTarget = -airT * 9;
+  camera.offsetY += (followTarget - camera.offsetY) * clamp(dt * 7, 0, 1);
+
+  if (camera.bounceTime > 0) {
+    camera.bounceTime = Math.max(0, camera.bounceTime - dt);
+    const p = 1 - camera.bounceTime / camera.bounceDuration;
+    camera.offsetY += Math.sin(p * Math.PI) * (1 - p) * camera.bounceMag;
+  }
+
+  const speedT = clamp((game.speed - CONFIG.runSpeedStart) / (CONFIG.runSpeedMax - CONFIG.runSpeedStart), 0, 1);
+  const targetZoom = lerp(1, 0.94, speedT);
+  camera.zoom += (targetZoom - camera.zoom) * clamp(dt * 1.5, 0, 1);
+}
+
+// Screen X for a background layer scrolling at a fraction of full gameplay speed —
+// the standard multi-plane parallax trick. speedMult=1 matches worldToScreenX
+// exactly; <1 drifts slower (distant layers), >1 drifts faster (foreground).
+function parallaxScreenX(worldX, speedMult) {
+  return (worldX - game.distance) * speedMult + game.mascot.x;
+}
+
+/* ------------------------- world layers ----------------------------------- */
 function drawSky(blend) {
   const top = lerpColor(blend.a.skyTop, blend.b.skyTop, blend.t);
   const bot = lerpColor(blend.a.skyBot, blend.b.skyBot, blend.t);
-  const g = ctx.createLinearGradient(0, 0, 0, groundY);
+  const pad = canvasWidth * 0.08;
+  const g = ctx.createLinearGradient(0, -pad, 0, groundY);
   g.addColorStop(0, top);
   g.addColorStop(1, bot);
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, canvasWidth, groundY);
+  ctx.fillRect(-pad, -pad, canvasWidth + pad * 2, groundY + pad);
 
-  if (blend.a.deco === 'star' || blend.b.deco === 'star') {
-    const alpha = blend.a.deco === 'star' ? (1 - blend.t) : blend.t;
+  const nightA = blend.a.name === 'night', nightB = blend.b.name === 'night';
+  if (nightA || nightB) {
+    const alpha = nightA ? (1 - blend.t) : blend.t;
     if (alpha > 0.05) {
       ctx.fillStyle = `rgba(255,255,255,${alpha * 0.9})`;
-      for (let i = 0; i < 40; i++) {
+      for (let i = 0; i < 50; i++) {
         const sx = (seededRandom(i * 91.7) * canvasWidth * 3 - game.distance * 0.05) % canvasWidth;
-        const sy = seededRandom(i * 53.3) * groundY * 0.75;
+        const sy = seededRandom(i * 53.3) * groundY * 0.7;
         const r = seededRandom(i * 17.1) * 1.4 + 0.4;
         ctx.beginPath();
         ctx.arc((sx + canvasWidth) % canvasWidth, sy, r, 0, Math.PI * 2);
         ctx.fill();
       }
+      if (alpha > 0.5) {
+        ctx.save();
+        ctx.globalAlpha = (alpha - 0.5) * 2;
+        ctx.fillStyle = 'rgba(230,238,255,0.9)';
+        ctx.shadowColor = 'rgba(200,215,255,0.55)';
+        ctx.shadowBlur = 30;
+        ctx.beginPath();
+        ctx.arc(canvasWidth * 0.78, groundY * 0.22, 26, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
     }
   }
+}
+
+// Rolling hill silhouettes between the far mountains and the gameplay ground —
+// this is where genuine elevation variation lives, kept separate from the flat
+// gameplay strip so collision never has to reason about uneven terrain.
+function drawMidground(blend) {
+  const color = lerpColor(blend.a.midground, blend.b.midground, blend.t);
+  const speedMult = 0.45;
+  const spacing = 260;
+  const baseY = groundY - 4;
+  const startSlot = Math.floor((game.distance - game.mascot.x / speedMult) / spacing) - 1;
+  const endSlot = Math.ceil((game.distance + (canvasWidth - game.mascot.x) / speedMult) / spacing) + 1;
+
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(-40, canvasHeight + 40);
+  ctx.lineTo(-40, baseY);
+  for (let slot = startSlot; slot <= endSlot; slot++) {
+    const h = 26 + seededRandom(slot * 9.1) * 30;
+    const sxMid = parallaxScreenX((slot + 0.5) * spacing, speedMult);
+    const sxEnd = parallaxScreenX((slot + 1) * spacing, speedMult);
+    ctx.quadraticCurveTo(sxMid, baseY - h, sxEnd, baseY);
+  }
+  ctx.lineTo(canvasWidth + 40, baseY);
+  ctx.lineTo(canvasWidth + 40, canvasHeight + 40);
+  ctx.closePath();
+  ctx.fill();
 }
 
 function drawParallaxLayer(color, speedMult, baseY, amp, tileWidth) {
   ctx.fillStyle = color;
   const offset = (game.distance * speedMult) % tileWidth;
-  for (let i = -1; i < canvasWidth / tileWidth + 2; i++) {
+  for (let i = -2; i < canvasWidth / tileWidth + 3; i++) {
     const cx = i * tileWidth - offset;
     ctx.beginPath();
-    ctx.moveTo(cx - tileWidth * 0.55, groundY);
+    ctx.moveTo(cx - tileWidth * 0.55, groundY + 20);
     ctx.lineTo(cx - tileWidth * 0.15, baseY - amp * 0.9);
     ctx.lineTo(cx + tileWidth * 0.15, baseY - amp * 0.4);
     ctx.lineTo(cx + tileWidth * 0.55, baseY);
-    ctx.lineTo(cx + tileWidth * 0.55, groundY);
+    ctx.lineTo(cx + tileWidth * 0.55, groundY + 20);
     ctx.closePath();
     ctx.fill();
   }
@@ -708,7 +806,7 @@ function drawClouds(color, speedMult) {
   ctx.fillStyle = color;
   const tileWidth = 260;
   const offset = (game.distance * speedMult) % tileWidth;
-  for (let i = -1; i < canvasWidth / tileWidth + 2; i++) {
+  for (let i = -2; i < canvasWidth / tileWidth + 3; i++) {
     const seed = i + Math.floor(game.distance / (tileWidth * 40));
     const cx = i * tileWidth - offset + seededRandom(seed * 5.5) * 60;
     const cy = groundY * (0.16 + seededRandom(seed * 8.2) * 0.22);
@@ -723,61 +821,268 @@ function drawClouds(color, speedMult) {
   }
 }
 
+// The gameplay ground stays perfectly flat at groundY (collision-accurate,
+// gameplay is untouched) but now reads as layered terrain: a soil base, a
+// surface band (grass/sand/snow/etc per biome), and fine procedural grain.
 function drawGround(blend) {
   const groundColor = lerpColor(blend.a.ground, blend.b.ground, blend.t);
   const edgeColor = lerpColor(blend.a.groundEdge, blend.b.groundEdge, blend.t);
-  ctx.fillStyle = groundColor;
-  ctx.fillRect(0, groundY, canvasWidth, canvasHeight - groundY);
+  const soilColor = lerpColor(blend.a.soil, blend.b.soil, blend.t);
+  const lightShade = shadeColor(groundColor, 0.14);
+  const darkShade = shadeColor(groundColor, -0.12);
+  const surfaceHeight = Math.max(16, (canvasHeight - groundY) * 0.32);
+
+  ctx.fillStyle = soilColor;
+  ctx.fillRect(-40, groundY, canvasWidth + 80, canvasHeight - groundY + 60);
+
+  // Blocky surface band: a world-anchored grid of hard-edged squares in 3
+  // shades (the actual "Minecraft" technique), so it scrolls smoothly with
+  // everything else instead of reading as a flat painted color.
+  const pixelSize = 8;
+  const rows = Math.max(1, Math.round(surfaceHeight / pixelSize));
+  const rowH = surfaceHeight / rows;
+  const colOffset = game.distance % pixelSize;
+  for (let gx = -colOffset - pixelSize; gx < canvasWidth + pixelSize; gx += pixelSize) {
+    const colSeed = Math.floor((gx + game.distance) / pixelSize);
+    for (let row = 0; row < rows; row++) {
+      const cellSeed = seededRandom(colSeed * 17.3 + row * 41.1 + 1);
+      ctx.fillStyle = cellSeed < 0.16 ? darkShade : (cellSeed < 0.34 ? lightShade : groundColor);
+      ctx.fillRect(gx, groundY + row * rowH, pixelSize + 0.6, rowH + 0.6);
+    }
+    // occasional dirt fleck poking through the bottom row of the surface band
+    const fleckSeed = seededRandom(colSeed * 63.4 + 3);
+    if (fleckSeed < 0.09) {
+      ctx.fillStyle = soilColor;
+      ctx.fillRect(gx, groundY + surfaceHeight - rowH, pixelSize + 0.6, rowH + 0.6);
+    }
+  }
+
   ctx.fillStyle = edgeColor;
-  ctx.fillRect(0, groundY, canvasWidth, 4);
+  ctx.fillRect(-40, groundY, canvasWidth + 80, 3);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.07)';
+  const grainSpacing = 34;
+  const grainOffset = game.distance % grainSpacing;
+  for (let gx2 = -grainOffset - 34; gx2 < canvasWidth + 34; gx2 += grainSpacing) {
+    const seed = Math.floor((gx2 + game.distance) / grainSpacing);
+    const gy = groundY + surfaceHeight + 6 + seededRandom(seed * 6.6) * Math.max(4, canvasHeight - groundY - surfaceHeight - 10);
+    const gs = 2 + seededRandom(seed * 3.3) * 3;
+    ctx.beginPath();
+    ctx.ellipse(gx2 + seededRandom(seed * 8.8) * 14, gy, gs, gs * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 function drawDecorations(blend) {
-  const spacing = 130;
+  const spacing = 95;
   const startSlot = Math.floor((game.distance - game.mascot.x) / spacing) - 1;
   const endSlot = Math.floor((game.distance + (canvasWidth - game.mascot.x)) / spacing) + 1;
-  const decoType = blend.t < 0.5 ? blend.a.deco : blend.b.deco;
+  const types = blend.t < 0.5 ? blend.a.decoTypes : blend.b.decoTypes;
   const decoColor = lerpColor(blend.a.accent, blend.b.accent, blend.t);
+  const lightDeco = shadeColor(decoColor, 0.18);
+  const darkDeco = shadeColor(decoColor, -0.18);
 
   for (let slot = startSlot; slot <= endSlot; slot++) {
     const r = seededRandom(slot * 7.13);
-    if (r > 0.5 || decoType === 'star') continue;
-    const worldX = slot * spacing + seededRandom(slot * 3.1) * 50;
+    if (r > 0.55) continue;
+    const worldX = slot * spacing + seededRandom(slot * 3.1) * 40;
     const sx = worldToScreenX(worldX);
     if (sx < -40 || sx > canvasWidth + 40) continue;
-    const scale = 0.7 + seededRandom(slot * 9.9) * 0.6;
-    ctx.fillStyle = decoColor;
-    ctx.globalAlpha = 0.85;
+    const scale = 0.7 + seededRandom(slot * 9.9) * 0.7;
+    const decoType = types[Math.floor(seededRandom(slot * 4.4) * types.length)];
+    ctx.globalAlpha = 0.92;
 
     if (decoType === 'grass') {
+      const px = 2.6 * scale;
       for (let b = 0; b < 3; b++) {
-        ctx.beginPath();
-        ctx.moveTo(sx + b * 5 - 5, groundY);
-        ctx.quadraticCurveTo(sx + b * 5 - 5 + 3, groundY - 14 * scale, sx + b * 5 - 5, groundY - 20 * scale);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = decoColor;
-        ctx.stroke();
+        const bw = 5 * scale, bh = (8 + b % 2 * 3) * scale;
+        drawPixelBlock(sx + (b - 1) * bw * 1.1 - bw / 2, groundY - bh, bw, bh, slot * 11.1 + b * 5.5, [decoColor, lightDeco, darkDeco], px);
       }
-    } else if (decoType === 'rock') {
-      roundRectPath(ctx, sx - 10 * scale, groundY - 14 * scale, 20 * scale, 14 * scale, 4);
-      ctx.fill();
+    } else if (decoType === 'flower') {
+      drawPixelBlock(sx - 1, groundY - 10 * scale, 2, 10 * scale, slot * 6.2, ['#4c7a34', shadeColor('#4c7a34', -0.15)], 2.4 * scale);
+      const petal = 5 * scale;
+      drawPixelBlock(sx - petal / 2, groundY - 10 * scale - petal, petal, petal, slot * 14.4, ['#fff6d8', '#ffe9a8', decoColor], 2.6 * scale);
+    } else if (decoType === 'bush') {
+      const w = 22 * scale, h = 15 * scale;
+      drawPixelBlock(sx - w / 2, groundY - h, w, h, slot * 8.1, [decoColor, lightDeco, darkDeco], 3.4 * scale);
+    } else if (decoType === 'rock' || decoType === 'boulder') {
+      const w = (decoType === 'boulder' ? 24 : 18) * scale, h = (decoType === 'boulder' ? 17 : 13) * scale;
+      // top-left highlight, bottom-right shadow — the classic blocky light-source trick
+      drawPixelBlock(sx - w / 2, groundY - h, w, h, slot * 8.8, [darkDeco, decoColor, decoColor, lightDeco], 3.6 * scale);
+    } else if (decoType === 'crack') {
+      ctx.globalAlpha = 0.4;
+      const w = 30 * scale, h = 4 * scale;
+      drawPixelBlock(sx - w / 2, groundY - h - 1, w, h, slot * 19.7, ['rgba(0,0,0,0.5)', 'rgba(0,0,0,0.2)'], 3 * scale);
     } else if (decoType === 'dune') {
-      ctx.beginPath();
-      ctx.ellipse(sx, groundY - 2, 22 * scale, 8 * scale, 0, Math.PI, 0);
-      ctx.fill();
+      // stepped blocky mound instead of a smooth ellipse
+      for (let s = 0; s < 3; s++) {
+        const stepW = (30 - s * 9) * scale, stepH = 6 * scale;
+        drawPixelBlock(sx - stepW / 2, groundY - (s + 1) * stepH, stepW, stepH, slot * 6.6 + s * 3.3, [decoColor, lightDeco, darkDeco], 3.4 * scale);
+      }
+    } else if (decoType === 'cactus') {
+      const cactusGreen = '#4f8f3d';
+      const cLight = shadeColor(cactusGreen, 0.16), cDark = shadeColor(cactusGreen, -0.16);
+      const w = 9 * scale, h = 27 * scale;
+      drawPixelBlock(sx - w / 2, groundY - h, w, h, slot * 9.9, [cactusGreen, cLight, cDark], 2.8 * scale);
+      const armW = 5 * scale, armH = 9 * scale;
+      drawPixelBlock(sx - w / 2 - armW, groundY - h * 0.55, armW, armH, slot * 13.1, [cactusGreen, cDark], 2.4 * scale);
+    } else if (decoType === 'plant') {
+      const w = 10 * scale, h = 16 * scale;
+      drawPixelBlock(sx - w / 2, groundY - h, w, h, slot * 15.5, [decoColor, darkDeco], 2.6 * scale);
+    } else if (decoType === 'crystal') {
+      ctx.save();
+      ctx.shadowColor = decoColor; ctx.shadowBlur = 8;
+      const w = 12 * scale, h = 20 * scale;
+      drawPixelBlock(sx - w / 2, groundY - h, w, h, slot * 21.3, [decoColor, lightDeco], 2.6 * scale);
+      ctx.restore();
     } else if (decoType === 'pine') {
-      ctx.beginPath();
-      ctx.moveTo(sx, groundY - 30 * scale);
-      ctx.lineTo(sx + 12 * scale, groundY);
-      ctx.lineTo(sx - 12 * scale, groundY);
-      ctx.closePath();
-      ctx.fill();
+      // blocky trunk + a squared-off leaf canopy, Minecraft-tree style
+      const trunkColor = '#6e4a2e';
+      const trunkW = 6 * scale, trunkH = 11 * scale;
+      drawPixelBlock(sx - trunkW / 2, groundY - trunkH, trunkW, trunkH, slot * 5.5, [trunkColor, shadeColor(trunkColor, -0.18)], 2.8 * scale);
+      const leafSize = 24 * scale;
+      drawPixelBlock(sx - leafSize / 2, groundY - trunkH - leafSize * 0.85, leafSize, leafSize * 0.85, slot * 7.7, [decoColor, lightDeco, darkDeco], 3.4 * scale);
+    } else if (decoType === 'snowdrift') {
+      const w = 26 * scale, h = 8 * scale;
+      drawPixelBlock(sx - w / 2, groundY - h, w, h, slot * 25.9, ['#ffffff', '#eef6fa', '#dcedf4'], 3.2 * scale);
     }
     ctx.globalAlpha = 1;
   }
 }
 
-function drawWeather(dt) {
+// Closest layer, scrolls faster than the ground, drawn after the mascot so it
+// occasionally sweeps in front — a cheap, classic depth cue. Deliberately
+// sparse and semi-transparent so it never actually blocks visibility of
+// upcoming obstacles or collectibles.
+function drawForegroundVegetation(blend) {
+  const speedMult = 1.6;
+  const spacing = 220;
+  const color = lerpColor(blend.a.soil, blend.b.soil, blend.t);
+  const startSlot = Math.floor((game.distance - game.mascot.x / speedMult - spacing) / spacing);
+  const endSlot = Math.ceil((game.distance + (canvasWidth - game.mascot.x) / speedMult + spacing) / spacing);
+
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = color;
+  for (let slot = startSlot; slot <= endSlot; slot++) {
+    const r = seededRandom(slot * 21.3);
+    if (r > 0.4) continue;
+    const worldX = slot * spacing + seededRandom(slot * 4.4) * 90;
+    const sx = parallaxScreenX(worldX, speedMult);
+    if (sx < -70 || sx > canvasWidth + 70) continue;
+    const h = 46 + seededRandom(slot * 8.8) * 60;
+    ctx.beginPath();
+    ctx.moveTo(sx - 20, canvasHeight + 20);
+    ctx.quadraticCurveTo(sx - 12, canvasHeight - h * 0.65, sx - 3, canvasHeight - h);
+    ctx.quadraticCurveTo(sx + 10, canvasHeight - h * 0.55, sx + 20, canvasHeight + 20);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Rare, purely decorative Concrete-branded silhouettes in the far background.
+// These live in the midground parallax plane, well behind the gameplay strip,
+// and are never checked against collision — see updateObstacles/updateCollectibles,
+// which this function has no connection to whatsoever.
+const LANDMARK_TYPES = ['moai_giant', 'vault', 'cube', 'bag_giant', 'crane', 'shield', 'monolith'];
+
+function drawLandmark(type, sx, baseY, scale, alpha) {
+  ctx.save();
+  ctx.translate(sx, baseY);
+  ctx.scale(scale, scale);
+  ctx.globalAlpha = alpha;
+
+  if (type === 'moai_giant') {
+    ctx.fillStyle = 'rgba(70,64,58,1)';
+    roundRectPath(ctx, -22, -90, 44, 68, 8); ctx.fill();
+    roundRectPath(ctx, -20, -92, 40, 16, 6); ctx.fill();
+    ctx.fillStyle = 'rgba(40,36,32,1)';
+    ctx.beginPath();
+    ctx.ellipse(-9, -68, 4, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(9, -68, 4, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (type === 'vault') {
+    ctx.fillStyle = 'rgba(28,32,40,1)';
+    roundRectPath(ctx, -32, -64, 64, 64, 10); ctx.fill();
+    ctx.strokeStyle = 'rgba(212,167,60,0.55)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(0, -32, 17, 0, Math.PI * 2); ctx.stroke();
+  } else if (type === 'cube') {
+    ctx.strokeStyle = 'rgba(212,167,60,0.85)';
+    ctx.shadowColor = 'rgba(212,167,60,0.6)'; ctx.shadowBlur = 16;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-20, -46, 36, 36);
+    ctx.strokeRect(-12, -56, 36, 36);
+    ctx.beginPath();
+    ctx.moveTo(-20, -46); ctx.lineTo(-12, -56);
+    ctx.moveTo(16, -46); ctx.lineTo(24, -56);
+    ctx.moveTo(-20, -10); ctx.lineTo(-12, -20);
+    ctx.moveTo(16, -10); ctx.lineTo(24, -20);
+    ctx.stroke();
+  } else if (type === 'bag_giant') {
+    ctx.fillStyle = 'rgba(212,167,60,0.9)';
+    ctx.beginPath();
+    ctx.moveTo(-22, -46); ctx.quadraticCurveTo(-27, -8, -16, -2);
+    ctx.lineTo(16, -2); ctx.quadraticCurveTo(27, -8, 22, -46);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,222,150,0.6)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-13, -46); ctx.quadraticCurveTo(0, -58, 13, -46); ctx.stroke();
+  } else if (type === 'crane') {
+    ctx.strokeStyle = 'rgba(45,46,50,1)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(0, -140);
+    ctx.lineTo(76, -140);
+    ctx.moveTo(0, -140); ctx.lineTo(-24, -122);
+    ctx.moveTo(58, -140); ctx.lineTo(58, -108);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(45,46,50,1)';
+    ctx.fillRect(-6, -6, 12, 6);
+  } else if (type === 'shield') {
+    ctx.strokeStyle = 'rgba(212,167,60,0.75)';
+    ctx.shadowColor = 'rgba(212,167,60,0.55)'; ctx.shadowBlur = 18;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, -56); ctx.lineTo(22, -42); ctx.lineTo(22, -14);
+    ctx.quadraticCurveTo(22, 8, 0, 18); ctx.quadraticCurveTo(-22, 8, -22, -14);
+    ctx.lineTo(-22, -42); ctx.closePath(); ctx.stroke();
+  } else if (type === 'monolith') {
+    ctx.fillStyle = 'rgba(22,23,27,1)';
+    ctx.fillRect(-16, -130, 32, 130);
+    ctx.fillStyle = 'rgba(212,167,60,0.25)';
+    ctx.fillRect(-16, -130, 32, 3);
+  }
+
+  ctx.restore();
+}
+
+function drawLandmarks() {
+  const speedMult = 0.32;
+  const spacing = 1500;
+  const startSlot = Math.floor((game.distance - game.mascot.x / speedMult - spacing) / spacing);
+  const endSlot = Math.ceil((game.distance + (canvasWidth - game.mascot.x) / speedMult + spacing) / spacing);
+
+  for (let slot = startSlot; slot <= endSlot; slot++) {
+    const r = seededRandom(slot * 31.7);
+    if (r > 0.5) continue;
+    const worldX = slot * spacing + seededRandom(slot * 5.1) * 400;
+    const sx = parallaxScreenX(worldX, speedMult);
+    if (sx < -160 || sx > canvasWidth + 160) continue;
+    const type = LANDMARK_TYPES[Math.floor(seededRandom(slot * 17.3) * LANDMARK_TYPES.length)];
+    const scale = 0.8 + seededRandom(slot * 12.2) * 0.7;
+    drawLandmark(type, sx, groundY - 2, scale, 0.5);
+  }
+}
+
+// Final low-opacity color wash per biome — cheap stand-in for per-biome lighting
+// without needing real per-object light calculations.
+function drawAtmosphereTint(blend) {
+  ctx.fillStyle = blend.t < 0.5 ? blend.a.atmosphere : blend.b.atmosphere;
+  ctx.fillRect(-40, -40, canvasWidth + 80, canvasHeight + 80);
+}
+
+function drawWeather() {
   const w = game.weather;
   if (!w.type) return;
   const fadeIn = clamp(1 - w.timeLeft / 800, 0, 1);
@@ -795,7 +1100,7 @@ function drawWeather(dt) {
     }
   } else if (w.type === 'fog') {
     ctx.fillStyle = `rgba(255,255,255,${0.16 * fadeIn})`;
-    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    ctx.fillRect(-40, -40, canvasWidth + 80, canvasHeight + 80);
   } else if (w.type === 'wind') {
     ctx.strokeStyle = `rgba(255,255,255,${0.25 * fadeIn})`;
     ctx.lineWidth = 1.5;
@@ -828,6 +1133,7 @@ function updateMascot(dt) {
         m.stateTime = 0;
         playLandSound();
         spawnDust(m.x + m.w * 0.5, groundY, 5);
+        triggerCameraBounce();
       }
     }
     if (m.onGround) {
@@ -1245,6 +1551,7 @@ function updateAmbient(dt) {
   updateMascot(dt);
   updateParticles(dt);
   updateShake(dt);
+  updateCamera(dt);
 }
 
 function updateGameplay(dt) {
@@ -1261,21 +1568,37 @@ function updateGameplay(dt) {
 function render() {
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
   ctx.save();
+
   if (game.shakeTime > 0) {
     const mag = game.shakeMag * (game.shakeTime / game.shakeDuration);
     ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
   }
+
+  // Speed-based zoom, pivoted near the action so the mascot stays framed as the
+  // view pulls back slightly at higher speed. Combined with the follow/bounce
+  // offset from updateCamera(). Purely visual — gameplay coordinates never see this.
+  const pivotX = game.mascot.x + game.mascot.w / 2;
+  const pivotY = groundY - canvasHeight * 0.15;
+  ctx.translate(pivotX, pivotY);
+  ctx.scale(camera.zoom, camera.zoom);
+  ctx.translate(-pivotX, -pivotY + camera.offsetY);
+
   const blend = biomeBlend();
   drawSky(blend);
-  drawParallaxLayer(lerpColor(blend.a.mountains, blend.b.mountains, blend.t), 0.15, groundY * 0.55, groundY * 0.4, 220);
   drawClouds(lerpColor(blend.a.clouds, blend.b.clouds, blend.t), 0.3);
+  drawParallaxLayer(lerpColor(blend.a.mountains, blend.b.mountains, blend.t), 0.15, groundY * 0.55, groundY * 0.4, 220);
+  drawLandmarks();
+  drawMidground(blend);
   drawGround(blend);
   drawDecorations(blend);
   drawObstacles();
   drawCollectibles();
   drawParticles();
   drawMascot();
+  drawForegroundVegetation(blend);
   drawWeather();
+  drawAtmosphereTint(blend);
+
   ctx.restore();
 }
 
