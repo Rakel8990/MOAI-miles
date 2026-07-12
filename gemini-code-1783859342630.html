@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Moai Miles</title>
+<style>
+  :root {
+    --bg-void: #030405;
+    --panel: rgba(13, 16, 23, 0.85);
+    --border: rgba(255, 255, 255, 0.1);
+    --accent: #d4a73c;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  body { background: var(--bg-void); color: #e7ebf0; font-family: var(--font-mono); margin: 0; overflow: hidden; }
+
+  /* Premium Glassmorphism Panel */
+  .ui-panel {
+    background: var(--panel);
+    backdrop-filter: blur(15px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+
+  /* Refined Button with Shine & Tactile Feedback */
+  .btn {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    text-transform: uppercase;
+    transition: all 0.25s cubic-bezier(0.23, 1, 0.32, 1);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(212, 167, 60, 0.3); }
+  .btn:active { transform: translateY(1px); }
+
+  .btn::after {
+    content: "";
+    position: absolute;
+    top: -50%; left: -50%; width: 200%; height: 200%;
+    background: linear-gradient(to bottom right, rgba(255,255,255,0.2), transparent);
+    transform: rotate(45deg);
+    pointer-events: none;
+  }
+
+  /* Monospaced Score Counters */
+  .score-val { font-variant-numeric: tabular-nums; letter-spacing: 0.05em; }
+</style>
+</head>
+<body>
+  </body>
+</html>
