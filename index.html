@@ -6,6 +6,20 @@
 <meta name="theme-color" content="#05070a">
 <meta name="description" content="Moai Miles — an endless runner where you dodge moai statues and collect yield bags.">
 <title>Moai Miles</title>
+
+<!-- Social preview card (X/Twitter, Discord, iMessage, etc. all read these tags
+     automatically when a link to this page is pasted or shared — no manual image
+     attachment needed). REPLACE "YOUR-DOMAIN-HERE" below with your actual Vercel
+     URL or custom domain once deployed, e.g. https://moai-miles.vercel.app -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Moai Miles">
+<meta property="og:description" content="Dodge moai statues, bag the yield, survive the chain.">
+<meta property="og:image" content="https://YOUR-DOMAIN-HERE/og-image.png">
+<meta property="og:url" content="https://YOUR-DOMAIN-HERE/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Moai Miles">
+<meta name="twitter:description" content="Dodge moai statues, bag the yield, survive the chain.">
+<meta name="twitter:image" content="https://YOUR-DOMAIN-HERE/og-image.png">
 <style>
   :root {
     --bg-void: #030405;
@@ -974,12 +988,14 @@ function drawDecorations(blend) {
       drawPixelBlock(sx - w / 2, groundY - h, w, h, slot * 21.3, [decoColor, lightDeco], 2.6 * scale);
       ctx.restore();
     } else if (decoType === 'pine') {
-      // blocky trunk + a squared-off leaf canopy, Minecraft-tree style
+      // blocky trunk + a layered leaf canopy (two overlapping clusters, Minecraft-tree style)
       const trunkColor = '#6e4a2e';
       const trunkW = 6 * scale, trunkH = 11 * scale;
       drawPixelBlock(sx - trunkW / 2, groundY - trunkH, trunkW, trunkH, slot * 5.5, [trunkColor, shadeColor(trunkColor, -0.18)], 2.8 * scale);
-      const leafSize = 24 * scale;
-      drawPixelBlock(sx - leafSize / 2, groundY - trunkH - leafSize * 0.85, leafSize, leafSize * 0.85, slot * 7.7, [decoColor, lightDeco, darkDeco], 3.4 * scale);
+      const leafSize = 22 * scale;
+      const upperSize = 16 * scale;
+      drawPixelBlock(sx - leafSize / 2, groundY - trunkH - leafSize * 0.75, leafSize, leafSize * 0.75, slot * 7.7, [decoColor, lightDeco, darkDeco], 3.4 * scale);
+      drawPixelBlock(sx - upperSize / 2, groundY - trunkH - leafSize * 0.75 - upperSize * 0.7, upperSize, upperSize * 0.7, slot * 12.3, [lightDeco, decoColor], 3 * scale);
     } else if (decoType === 'snowdrift') {
       const w = 26 * scale, h = 8 * scale;
       drawPixelBlock(sx - w / 2, groundY - h, w, h, slot * 25.9, ['#ffffff', '#eef6fa', '#dcedf4'], 3.2 * scale);
@@ -1240,58 +1256,81 @@ function drawMascot() {
 
   const legPhase = Math.sin(m.runCycle * 2);
   const legSwing = m.state === 'run' ? legPhase * 6 : 0;
+  const armSwing = m.state === 'run' ? -legPhase * 5 : 0;
+
+  const bodyShades = rainbow ? ['#ffb3ec', '#ffd6f5', '#c9a3ff'] : ['#9aa3b3', '#b7bfcc', '#7c8494'];
+  const armShades = rainbow ? ['#e896d8', '#ffd6f5'] : ['#7c8494', '#69707e'];
+  const accentStroke = rainbow ? 'rgba(255,255,255,0.85)' : 'rgba(212,167,60,0.75)';
+  const accentGlow = rainbow ? 'rgba(255,255,255,0.6)' : 'rgba(212,167,60,0.6)';
+
+  // legs
   ctx.fillStyle = '#333a47';
   if (legsVisible) {
-    roundRectPath(ctx, -18 + legSwing * 0.3, -15, 9, 15, 3);
+    roundRectPath(ctx, -19 + legSwing * 0.3, -16, 9, 16, 3);
     ctx.fill();
-    roundRectPath(ctx, 9 - legSwing * 0.3, -15, 9, 15, 3);
+    roundRectPath(ctx, 10 - legSwing * 0.3, -16, 9, 16, 3);
     ctx.fill();
   } else {
-    roundRectPath(ctx, -16, -22, 10, 12, 3);
+    roundRectPath(ctx, -17, -23, 10, 12, 3);
     ctx.fill();
-    roundRectPath(ctx, 6, -22, 10, 12, 3);
+    roundRectPath(ctx, 7, -23, 10, 12, 3);
     ctx.fill();
   }
 
-  const bodyGrad = ctx.createLinearGradient(0, -56, 0, -14);
-  if (rainbow) {
-    bodyGrad.addColorStop(0, '#ffb3ec');
-    bodyGrad.addColorStop(0.5, '#b3d4ff');
-    bodyGrad.addColorStop(1, '#b3ffd9');
-  } else {
-    bodyGrad.addColorStop(0, '#aab3c2');
-    bodyGrad.addColorStop(1, '#5c6474');
-  }
+  // back arm — a visibly different (darker) shade from the torso so it reads as
+  // a separate limb rather than blending into the body's texture
+  const armY = legsVisible ? -30 - Math.max(0, armSwing) : -34;
+  drawPixelBlock(18, armY, 5, 17, 501, armShades, 3.2);
 
-  ctx.fillStyle = bodyGrad;
-  ctx.strokeStyle = rainbow ? 'rgba(255,255,255,0.6)' : 'rgba(212,167,60,0.5)';
+  // torso — the dominant mass, blocky pixel texture matching the ground/obstacles
+  drawPixelBlock(-21, -40, 42, 23, 401, bodyShades, 4.6);
+  ctx.strokeStyle = accentStroke;
   ctx.lineWidth = 1.5;
-  roundRectPath(ctx, -19, -38, 38, 24, 8);
-  ctx.fill();
+  roundRectPath(ctx, -21, -40, 42, 23, 7);
   ctx.stroke();
 
-  ctx.strokeStyle = rainbow ? 'rgba(255,255,255,0.85)' : 'rgba(212,167,60,0.75)';
-  ctx.shadowColor = rainbow ? 'rgba(255,255,255,0.6)' : 'rgba(212,167,60,0.6)';
+  ctx.strokeStyle = accentStroke;
+  ctx.shadowColor = accentGlow;
   ctx.shadowBlur = 6;
   ctx.beginPath();
-  ctx.moveTo(-19, -30);
-  ctx.lineTo(19, -30);
+  ctx.moveTo(-21, -31);
+  ctx.lineTo(21, -31);
   ctx.stroke();
   ctx.shadowBlur = 0;
 
-  ctx.fillStyle = bodyGrad;
-  roundRectPath(ctx, -15, -56, 30, 20, 9);
-  ctx.fill();
-  ctx.strokeStyle = rainbow ? 'rgba(255,255,255,0.6)' : 'rgba(212,167,60,0.5)';
+  // chest emblem — small glowing diamond, a nod to the bag/vault iconography
+  ctx.save();
+  ctx.translate(0, -24);
+  ctx.rotate(Math.PI / 4);
+  ctx.fillStyle = rainbow ? '#ffffff' : '#e8c878';
+  ctx.shadowColor = accentGlow;
+  ctx.shadowBlur = 9;
+  ctx.fillRect(-4, -4, 8, 8);
+  ctx.restore();
+
+  // front arm
+  drawPixelBlock(-23, armY, 5, 17, 502, armShades, 3.2);
+
+  // head — clearly smaller than the torso so it reads as a head sitting on
+  // shoulders, not a second body stacked on top
+  drawPixelBlock(-11, -58, 22, 16, 402, bodyShades, 3.5);
+  ctx.strokeStyle = accentStroke;
+  roundRectPath(ctx, -11, -58, 22, 16, 6);
   ctx.stroke();
 
+  // eyes — rounder, with a highlight dot so they read as alive rather than flat dots
   const blink = m.state === 'idle' && Math.abs(m.blinkTimer) < 0.1;
+  const eyeH = blink ? 1 : 5;
   ctx.fillStyle = '#1a1d24';
-  const eyeH = blink ? 1 : 4;
-  roundRectPath(ctx, -8, -48 - eyeH / 2, 5, eyeH, 2);
+  roundRectPath(ctx, -6.5, -51 - eyeH / 2, 4.5, eyeH, 2);
   ctx.fill();
-  roundRectPath(ctx, 3, -48 - eyeH / 2, 5, eyeH, 2);
+  roundRectPath(ctx, 2, -51 - eyeH / 2, 4.5, eyeH, 2);
   ctx.fill();
+  if (!blink) {
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillRect(-6, -51 - eyeH / 2, 1.4, 1.4);
+    ctx.fillRect(2.5, -51 - eyeH / 2, 1.4, 1.4);
+  }
 
   ctx.restore();
 }
@@ -1363,17 +1402,16 @@ function drawObstacles() {
     const sx = worldToScreenX(o.worldX);
     if (sx < -80 || sx > canvasWidth + 80) continue;
     const w = o.width, h = o.height;
+    const seed = Math.round(o.worldX);
+    const stoneShades = ['#8b8378', '#a1988a', '#726b60'];
     ctx.save();
     ctx.translate(sx + w / 2, groundY);
-    ctx.fillStyle = '#8b8378';
     ctx.strokeStyle = 'rgba(212,167,60,0.3)';
     ctx.lineWidth = 1.5;
+    drawPixelBlock(-w / 2, -h, w, h * 0.72, seed, stoneShades, Math.max(2.4, w * 0.09));
     roundRectPath(ctx, -w / 2, -h, w, h * 0.72, w * 0.18);
-    ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = '#6f685e';
-    roundRectPath(ctx, -w / 2 * 0.95, -h, w * 0.95, h * 0.16, w * 0.1);
-    ctx.fill();
+    drawPixelBlock(-w / 2 * 0.95, -h, w * 0.95, h * 0.16, seed + 7, ['#6f685e', '#847a6c'], Math.max(2.2, w * 0.08));
     ctx.fillStyle = '#2c2a26';
     ctx.beginPath();
     ctx.ellipse(-w * 0.2, -h * 0.78, w * 0.11, h * 0.05, 0, 0, Math.PI * 2);
@@ -1386,9 +1424,7 @@ function drawObstacles() {
     ctx.lineTo(0, -h * 0.45);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = '#6f685e';
-    roundRectPath(ctx, -w / 2 * 1.05, -h * 0.3, w * 1.05, h * 0.3, 4);
-    ctx.fill();
+    drawPixelBlock(-w / 2 * 1.05, -h * 0.3, w * 1.05, h * 0.3, seed + 13, ['#6f685e', '#847a6c', '#5a5348'], Math.max(2.4, w * 0.09));
     ctx.restore();
   }
 }
@@ -1871,23 +1907,38 @@ function drawMascotIcon(c2, x, y, scale) {
   c2.translate(x, y);
   c2.scale(scale, scale);
   c2.fillStyle = '#333a47';
-  roundRectPath(c2, -18, -15, 9, 15, 3); c2.fill();
-  roundRectPath(c2, 9, -15, 9, 15, 3); c2.fill();
-  const grad = c2.createLinearGradient(0, -56, 0, -14);
-  grad.addColorStop(0, '#aab3c2');
-  grad.addColorStop(1, '#5c6474');
-  c2.fillStyle = grad;
+  roundRectPath(c2, -19, -16, 9, 16, 3); c2.fill();
+  roundRectPath(c2, 10, -16, 9, 16, 3); c2.fill();
+  const grad = c2.createLinearGradient(0, -58, 0, -17);
+  grad.addColorStop(0, '#b7bfcc');
+  grad.addColorStop(1, '#7c8494');
+  const armGrad = c2.createLinearGradient(0, -30, 0, -13);
+  armGrad.addColorStop(0, '#7c8494');
+  armGrad.addColorStop(1, '#69707e');
+  c2.fillStyle = armGrad;
+  roundRectPath(c2, 18, -30, 5, 17, 2); c2.fill();
   c2.strokeStyle = 'rgba(212,167,60,0.6)';
   c2.lineWidth = 1.5;
-  roundRectPath(c2, -19, -38, 38, 24, 8); c2.fill(); c2.stroke();
-  c2.strokeStyle = 'rgba(212,167,60,0.9)';
-  c2.beginPath(); c2.moveTo(-19, -30); c2.lineTo(19, -30); c2.stroke();
   c2.fillStyle = grad;
-  roundRectPath(c2, -15, -56, 30, 20, 9); c2.fill();
+  roundRectPath(c2, -21, -40, 42, 23, 7); c2.fill(); c2.stroke();
+  c2.strokeStyle = 'rgba(212,167,60,0.9)';
+  c2.beginPath(); c2.moveTo(-21, -31); c2.lineTo(21, -31); c2.stroke();
+  c2.save();
+  c2.translate(0, -24); c2.rotate(Math.PI / 4);
+  c2.fillStyle = '#e8c878';
+  c2.fillRect(-3.6, -3.6, 7.2, 7.2);
+  c2.restore();
+  c2.fillStyle = armGrad;
+  roundRectPath(c2, -23, -30, 5, 17, 2); c2.fill();
+  c2.fillStyle = grad;
+  roundRectPath(c2, -11, -58, 22, 16, 6); c2.fill();
   c2.strokeStyle = 'rgba(212,167,60,0.6)'; c2.stroke();
   c2.fillStyle = '#1a1d24';
-  roundRectPath(c2, -8, -50, 5, 4, 2); c2.fill();
-  roundRectPath(c2, 3, -50, 5, 4, 2); c2.fill();
+  roundRectPath(c2, -6.5, -53.5, 4.5, 5, 2); c2.fill();
+  roundRectPath(c2, 2, -53.5, 4.5, 5, 2); c2.fill();
+  c2.fillStyle = 'rgba(255,255,255,0.85)';
+  c2.fillRect(-6, -53.5, 1.4, 1.4);
+  c2.fillRect(2.5, -53.5, 1.4, 1.4);
   c2.restore();
 }
 
@@ -1955,6 +2006,24 @@ function generateShareCardCanvas() {
   return card;
 }
 
+function openXIntent(caption, gameUrl) {
+  const intentUrl = 'https://twitter.com/intent/tweet'
+    + '?text=' + encodeURIComponent(caption)
+    + '&url=' + encodeURIComponent(gameUrl)
+    + '&hashtags=' + encodeURIComponent('Concrete,DeFi');
+  window.open(intentUrl, '_blank', 'noopener,noreferrer');
+}
+
+function downloadCardFile(card) {
+  const dataUrl = card.toDataURL('image/png');
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = 'moai-miles-score.png';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 function shareScore() {
   playClickSound();
   const card = generateShareCardCanvas();
@@ -1963,24 +2032,30 @@ function shareScore() {
     ' bags, ' + distanceM + 'm run. Can you beat it? Built by @22kian_';
   const gameUrl = window.location.origin + window.location.pathname;
 
-  // Save the branded card first so it's sitting in Downloads, ready to drag into
-  // the X compose window that's about to open (intent links can't attach media directly).
-  const dataUrl = card.toDataURL('image/png');
-  const a = document.createElement('a');
-  a.href = dataUrl;
-  a.download = 'moai-miles-score.png';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  card.toBlob(async (blob) => {
+    if (!blob) { openXIntent(caption, gameUrl); return; }
+    const file = new File([blob], 'moai-miles-score.png', { type: 'image/png' });
 
-  const intentUrl = 'https://twitter.com/intent/tweet'
-    + '?text=' + encodeURIComponent(caption)
-    + '&url=' + encodeURIComponent(gameUrl)
-    + '&hashtags=' + encodeURIComponent('Concrete,DeFi');
-  window.open(intentUrl, '_blank', 'noopener,noreferrer');
+    // Best case (mainly mobile): the image genuinely attaches to whatever the
+    // user picks in their share sheet — X's app, X on web, anywhere else.
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], text: caption, title: 'Moai Miles' });
+        return;
+      } catch (e) {
+        // user backed out of the share sheet — fall through to the link below
+      }
+    }
 
-  shareBtn.textContent = 'CARD SAVED — OPENING X...';
-  setTimeout(() => { shareBtn.textContent = 'SHARE ON X'; }, 2400);
+    // Fallback (mainly desktop): X's web intent link has no way to carry an
+    // attached image — that's a restriction on X's side, not something a site
+    // can work around. So we download the card and open X with the caption
+    // ready, turning it into a two-second manual attach instead of a blank post.
+    downloadCardFile(card);
+    openXIntent(caption, gameUrl);
+    shareBtn.textContent = 'CARD SAVED — OPENING X...';
+    setTimeout(() => { shareBtn.textContent = 'SHARE ON X'; }, 2400);
+  }, 'image/png');
 }
 
 function resetProgress() {
