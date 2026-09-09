@@ -3,17 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#05070a">
-<meta name="description" content="Moai Miles — an endless runner where you dodge moai statues and collect yield bags.">
-<title>Moai Miles</title>
+<meta name="theme-color" content="#171817">
+<meta name="description" content="Concrete presents Moai Miles — a focused endless runner for the onchain community.">
+<title>Moai Miles — Concrete</title>
 
 <!-- Social preview card (X/Twitter, Discord, iMessage, etc. all read these tags
      automatically when a link to this page is pasted or shared — no manual image
      attachment needed). REPLACE "YOUR-DOMAIN-HERE" below with your actual Vercel
      URL or custom domain once deployed, e.g. https://moai-miles.vercel.app -->
 <meta property="og:type" content="website">
-<meta property="og:title" content="Moai Miles">
-<meta property="og:description" content="Dodge moai statues, bag the yield, survive the chain.">
+<meta property="og:title" content="Moai Miles — Concrete">
+<meta property="og:description" content="A focused run through the Concrete world. Dodge moai, collect yield, keep moving.">
 <meta property="og:image" content="https://YOUR-DOMAIN-HERE/og-image.png">
 <meta property="og:url" content="https://YOUR-DOMAIN-HERE/">
 <meta name="twitter:card" content="summary_large_image">
@@ -22,18 +22,20 @@
 <meta name="twitter:image" content="https://YOUR-DOMAIN-HERE/og-image.png">
 <style>
   :root {
-    --bg-void: #030405;
-    --panel: #0d1017;
-    --border: #1c2230;
-    --text: #e7ebf0;
-    --text-dim: #8a93a3;
-    --text-faint: #545d6b;
-    --accent: #d4a73c;
-    --accent-soft: #e8c878;
-    --accent-glow: rgba(212, 167, 60, 0.55);
-    --gold: #ffc857;
-    --gold-glow: rgba(255, 200, 87, 0.55);
-    --risk: #ff5468;
+    --bg-void: #171817;
+    --panel: #222321;
+    --panel-soft: #2b2c29;
+    --border: rgba(229, 227, 216, 0.16);
+    --border-strong: rgba(229, 227, 216, 0.32);
+    --text: #f1efe8;
+    --text-dim: #b3b4ac;
+    --text-faint: #777a73;
+    --accent: #d7ff3f;
+    --accent-soft: #e6ff8f;
+    --accent-glow: rgba(215, 255, 63, 0.45);
+    --gold: #d7ff3f;
+    --gold-glow: rgba(215, 255, 63, 0.38);
+    --risk: #ff766b;
     --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
     --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   }
@@ -60,8 +62,9 @@
     position: relative;
     width: 100%;
     height: 100%;
-    background: #05070a;
+    background: var(--bg-void);
     overflow: hidden;
+    isolation: isolate;
   }
 
   canvas#gameCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; z-index: 1; cursor: pointer; }
@@ -121,11 +124,12 @@
     position: absolute; inset: 0;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 10px; padding: 20px 24px; text-align: center;
-    background-color: rgba(3,4,6,0.92);
+    background-color: rgba(23,24,23,0.94);
     background-image:
-      radial-gradient(ellipse at 50% 28%, rgba(212,167,60,0.07), transparent 62%),
-      repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 26px),
-      repeating-linear-gradient(90deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 26px);
+      linear-gradient(rgba(241,239,232,0.028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(241,239,232,0.028) 1px, transparent 1px),
+      radial-gradient(ellipse at 50% 22%, rgba(215,255,63,0.09), transparent 58%);
+    background-size: 32px 32px, 32px 32px, auto;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     z-index: 10; opacity: 1; transform: scale(1); visibility: visible;
     transition: opacity .3s ease, transform .3s ease, visibility .3s;
@@ -141,9 +145,9 @@
 
   .logo-glow {
     position: relative;
-    font-family: var(--font-mono); font-size: clamp(20px, 5.5vw, 30px); font-weight: 800;
-    letter-spacing: 0.06em; color: var(--text);
-    text-shadow: 0 0 18px var(--accent-glow), 0 0 46px rgba(212,167,60,0.3);
+    font-family: var(--font-sans); font-size: clamp(24px, 5.5vw, 38px); font-weight: 800;
+    letter-spacing: -0.045em; color: var(--text);
+    text-shadow: 0 0 28px var(--accent-glow);
     padding: 0 30px;
   }
   .logo-glow::before, .logo-glow::after {
@@ -172,11 +176,11 @@
     position: relative;
     overflow: hidden;
     font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em;
-    color: #fbe9c2;
-    background: linear-gradient(180deg, rgba(212,167,60,0.2), rgba(212,167,60,0.06));
-    border: 1px solid rgba(212,167,60,0.55);
-    padding: 11px 26px; border-radius: 10px; cursor: pointer;
-    box-shadow: 0 0 18px rgba(212,167,60,0.14), inset 0 1px 0 rgba(255,255,255,0.14);
+    color: #171817;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 11px 26px; border-radius: 6px; cursor: pointer;
+    box-shadow: 0 8px 24px rgba(215,255,63,0.16), inset 0 1px 0 rgba(255,255,255,0.38);
     transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
   }
   .btn::before {
@@ -264,7 +268,7 @@
 
     <div id="startScreen" class="screen">
       <div class="logo-glow">MOAI MILES</div>
-      <p class="subtitle">Run the chain. Bag the yield. Clear every moai in your path.</p>
+      <p class="subtitle">A Concrete field test in focus, timing, and forward motion. Clear every moai in your path.</p>
       <input id="usernameInput" class="text-input" type="text" maxlength="14" placeholder="Enter username" />
       <button id="playBtn" class="btn">PLAY</button>
       <div class="btn-row">
@@ -273,7 +277,7 @@
       </div>
       <div class="controls-hint">Space / ↑ / tap to jump</div>
       <div class="controls-hint">BEST <span id="bestValueStart">0</span></div>
-      <div class="controls-hint">Built by <a class="credit-link" href="https://x.com/22kian_" target="_blank" rel="noopener noreferrer">@22kian_</a></div>
+      <div class="controls-hint">A Concrete community game · <a class="credit-link" href="https://concrete.xyz" target="_blank" rel="noopener noreferrer">concrete.xyz</a></div>
     </div>
 
     <div id="settingsScreen" class="screen hidden">
